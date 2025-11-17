@@ -103,8 +103,6 @@ mod tests {
 
         let (token, rest) = a_parser("");
 
-        println!("{:?}", token);
-
         assert!(token.is_err());
         assert_eq!(rest, "");
     }
