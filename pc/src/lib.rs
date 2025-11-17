@@ -184,4 +184,39 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(rest, "c");
     }
+
+    #[test]
+    fn should_be_able_to_combine_and_then_and_or_else() {
+        let parser_a = char_parser('a');
+        let parser_b = char_parser('b');
+        let parser_c = char_parser('c');
+
+        let b_or_else_c = or_else(parser_b, parser_c);
+        let a_and_then_b_or_else_c = and_then(parser_a, b_or_else_c);
+
+        let (result, rest) = a_and_then_b_or_else_c("abz");
+
+        assert!(matches!(result, Ok(('a', 'b'))));
+        assert_eq!(rest, "z");
+
+        let (result, rest) = a_and_then_b_or_else_c("acz");
+
+        assert!(matches!(result, Ok(('a', 'c'))));
+        assert_eq!(rest, "z");
+
+        let (result, rest) = a_and_then_b_or_else_c("zbz");
+
+        assert!(result.is_err());
+        assert_eq!(rest, "zbz");
+
+        println!("{:?}", result);
+
+        let (result, rest) = a_and_then_b_or_else_c("azz");
+
+        assert!(result.is_err());
+        assert_eq!(rest, "zz");
+
+        // TODO: Better error messages (e.g show that it was B OR C that was expected, not just C
+        println!("{:?}", result);
+    }
 }
