@@ -37,6 +37,28 @@ pub fn char_parser(to_match: char) -> impl Parser<char> {
     }
 }
 
+/// Combine two parsers in succession, and return a tuple of their combined results. If either
+/// parser fails, then the corresponding input is not consumed and the error is returned.
+pub fn and_then<T, U>(parser1: impl Parser<T>, parser2: impl Parser<U>) -> impl Parser<(T, U)> {
+    move |input| {
+        let (result1, remaining1) = parser1(input);
+
+        match result1 {
+            Ok(token1) => {
+                let (result2, remaining2) = parser2(remaining1);
+
+                match result2 {
+                    Ok(token2) => (Ok((token1, token2)), remaining2),
+                    // Don't consume second input if second parser errors
+                    Err(err2) => (Err(err2), remaining1),
+                }
+            }
+            // Don't consume input if first parser errors
+            Err(err1) => (Err(err1), input),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +107,38 @@ mod tests {
 
         assert!(token.is_err());
         assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn and_then_should_parse_two_in_succession() {
+        let parser_a = char_parser('a');
+        let parser_b = char_parser('b');
+
+        let a_and_then_b = and_then(parser_a, parser_b);
+
+        let (result, rest) = a_and_then_b("abc");
+
+        assert!(matches!(result, Ok(('a', 'b'))));
+        assert_eq!(rest, "c");
+    }
+
+    #[test]
+    fn if_one_parser_fails_then_and_then_should_error() {
+        let parser_a = char_parser('a');
+        let parser_b = char_parser('b');
+
+        let a_and_then_b = and_then(parser_a, parser_b);
+
+        // First parser fails
+        let (result, rest) = a_and_then_b("zbc");
+
+        assert!(result.is_err());
+        assert_eq!(rest, "zbc");
+
+        // Second parser fails
+        let (result, rest) = a_and_then_b("azc");
+
+        assert!(result.is_err());
+        assert_eq!(rest, "zc");
     }
 }
