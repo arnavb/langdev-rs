@@ -39,7 +39,7 @@ pub fn char_parser(to_match: char) -> impl Parser<char> {
 
 /// Combine two parsers in succession, and return a tuple of their combined results. If either
 /// parser fails, then the corresponding input is not consumed and the error is returned.
-pub fn and_then<T, U>(parser1: impl Parser<T>, parser2: impl Parser<U>) -> impl Parser<(T, U)> {
+pub fn and_then<T, U>(parser1: &impl Parser<T>, parser2: &impl Parser<U>) -> impl Parser<(T, U)> {
     move |input| {
         let (result1, remaining1) = parser1(input);
 
@@ -62,7 +62,7 @@ pub fn and_then<T, U>(parser1: impl Parser<T>, parser2: impl Parser<U>) -> impl 
 /// Run either of two parsers of the same type. If the first succeeds, return its result.
 /// Otherwise return the result of the second parser. If any parser fails, input should not be
 /// consumed with respect to that parser.
-pub fn or_else<T>(parser1: impl Parser<T>, parser2: impl Parser<T>) -> impl Parser<T> {
+pub fn or_else<T>(parser1: &impl Parser<T>, parser2: &impl Parser<T>) -> impl Parser<T> {
     move |input| {
         let (result1, remaining1) = parser1(input);
 
@@ -126,7 +126,7 @@ mod tests {
         let parser_a = char_parser('a');
         let parser_b = char_parser('b');
 
-        let a_and_then_b = and_then(parser_a, parser_b);
+        let a_and_then_b = and_then(&parser_a, &parser_b);
 
         let (result, rest) = a_and_then_b("abc");
 
@@ -139,7 +139,7 @@ mod tests {
         let parser_a = char_parser('a');
         let parser_b = char_parser('b');
 
-        let a_and_then_b = and_then(parser_a, parser_b);
+        let a_and_then_b = and_then(&parser_a, &parser_b);
 
         // First parser fails
         let (result, rest) = a_and_then_b("zbc");
@@ -159,7 +159,7 @@ mod tests {
         let parser_a = char_parser('a');
         let parser_b = char_parser('b');
 
-        let a_or_else_b = or_else(parser_a, parser_b);
+        let a_or_else_b = or_else(&parser_a, &parser_b);
 
         let (result, rest) = a_or_else_b("a");
 
@@ -177,7 +177,7 @@ mod tests {
         let parser_a = char_parser('a');
         let parser_b = char_parser('b');
 
-        let a_or_else_b = or_else(parser_a, parser_b);
+        let a_or_else_b = or_else(&parser_a, &parser_b);
 
         let (result, rest) = a_or_else_b("c");
 
@@ -191,8 +191,8 @@ mod tests {
         let parser_b = char_parser('b');
         let parser_c = char_parser('c');
 
-        let b_or_else_c = or_else(parser_b, parser_c);
-        let a_and_then_b_or_else_c = and_then(parser_a, b_or_else_c);
+        let b_or_else_c = or_else(&parser_b, &parser_c);
+        let a_and_then_b_or_else_c = and_then(&parser_a, &b_or_else_c);
 
         let (result, rest) = a_and_then_b_or_else_c("abz");
 
