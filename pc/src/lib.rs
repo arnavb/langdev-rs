@@ -59,6 +59,20 @@ pub fn and_then<T, U>(parser1: impl Parser<T>, parser2: impl Parser<U>) -> impl 
     }
 }
 
+/// Run either of two parsers of the same type. If the first succeeds, return its result.
+/// Otherwise return the result of the second parser. If any parser fails, input should not be
+/// consumed with respect to that parser.
+pub fn or_else<T>(parser1: impl Parser<T>, parser2: impl Parser<T>) -> impl Parser<T> {
+    move |input| {
+        let (result1, remaining1) = parser1(input);
+
+        match result1 {
+            Ok(token1) => (Ok(token1), remaining1),
+            Err(_) => parser2(remaining1),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +152,36 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(rest, "zc");
+    }
+
+    #[test]
+    fn or_else_should_parse_either_of_two_parsers() {
+        let parser_a = char_parser('a');
+        let parser_b = char_parser('b');
+
+        let a_or_else_b = or_else(parser_a, parser_b);
+
+        let (result, rest) = a_or_else_b("a");
+
+        assert!(matches!(result, Ok('a')));
+        assert_eq!(rest, "");
+
+        let (result, rest) = a_or_else_b("b");
+
+        assert!(matches!(result, Ok('b')));
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn if_both_parsers_fail_then_or_else_should_error() {
+        let parser_a = char_parser('a');
+        let parser_b = char_parser('b');
+
+        let a_or_else_b = or_else(parser_a, parser_b);
+
+        let (result, rest) = a_or_else_b("c");
+
+        assert!(result.is_err());
+        assert_eq!(rest, "c");
     }
 }
