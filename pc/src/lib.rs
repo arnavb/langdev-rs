@@ -33,6 +33,16 @@ pub trait Parser<T>: Fn(&str) -> (Result<T, ParseError>, &str) {}
 
 impl<T, F> Parser<T> for F where F: Fn(&str) -> (Result<T, ParseError>, &str) {}
 
+/// Match any character
+pub fn any_char(input: &str) -> (Result<char, ParseError>, &str) {
+    match input.chars().next() {
+        Some(ch) => (Ok(ch), &input[ch.len_utf8()..]),
+        None => (Err(nothing()), input),
+    }
+}
+
+/// Match a specific character
+/// (could be implemented in terms of any_char(), but that doesn't add much
 pub fn char_parser(to_match: char) -> impl Parser<char> {
     move |input| match input.chars().next() {
         Some(ch) if ch == to_match => (Ok(ch), &input[to_match.len_utf8()..]),
@@ -110,6 +120,22 @@ pub fn choice<T>(parsers: &[impl Parser<T>]) -> impl Parser<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn any_char_should_parse_any_character() {
+        let (token, rest) = any_char("a");
+
+        assert!(matches!(token, Ok('a')));
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn when_passed_nothing_any_char_should_error() {
+        let (token, rest) = any_char("");
+
+        assert!(token.is_err());
+        assert_eq!(rest, "");
+    }
 
     #[test]
     fn char_parser_should_return_a_parser() {
