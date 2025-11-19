@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -19,6 +19,10 @@ fn expect_specific<T: Display>(expected: &T, actual: &T) -> ParseError {
 
 fn expect<T: Display>(expected: &T, actual: &str) -> ParseError {
     ParseError::new(&format!("Expected '{}', got {}", expected, actual))
+}
+
+fn nothing() -> ParseError {
+    ParseError::new("Expected anything, got nothing")
 }
 
 /// A parser takes an input (e.g a string), and turns it into a parsed token or error and
@@ -70,6 +74,36 @@ pub fn or_else<T>(parser1: impl Parser<T>, parser2: impl Parser<T>) -> impl Pars
             Ok(token1) => (Ok(token1), remaining1),
             Err(_) => parser2(remaining1),
         }
+    }
+}
+
+/// Implement choice, which is essentially equivalent to folding over or_else: keep trying parsers
+/// in a collection until one works, and if none do, return the last result. Not actually
+/// implemented using or_else, because this is difficult to statically do with Rust and how traits
+/// work (they end up being different opaque types, which can't be reduced).
+pub fn choice<T>(parsers: &[impl Parser<T>]) -> impl Parser<T> {
+    move |input| {
+        let [first, rest_parsers @ ..] = parsers else {
+            return (Err(nothing()), input);
+        };
+
+        // Will store successive error, and return the last one if no parser
+        // succeeds
+        let (mut result, remaining) = first(input);
+
+        if result.is_ok() {
+            return (result, remaining);
+        }
+
+        for parser in rest_parsers {
+            result = match parser(input) {
+                (Ok(token), remaining) => return (Ok(token), remaining),
+                (Err(err), _) => Err(err),
+            }
+        }
+
+        // If we reached here, no parser succeeded -> No input was consumed
+        (result, input)
     }
 }
 
@@ -218,5 +252,32 @@ mod tests {
 
         // TODO: Better error messages (e.g show that it was B OR C that was expected, not just C
         println!("{:?}", result);
+    }
+
+    #[test]
+    fn if_given_list_of_parser_choice_should_try_each_one() {
+        let lowercase_parsers = ('a'..='z').map(char_parser).collect::<Vec<_>>();
+        let any_lowercase = choice(&lowercase_parsers);
+
+        for letter in 'a'..='z' {
+            let input = &format!("{letter}random");
+            let (result, rest) = any_lowercase(input);
+
+            assert!(matches!(result, Ok(l) if letter == l));
+            assert_eq!(rest, "random");
+        }
+    }
+
+    #[test]
+    fn if_given_list_parser_choice_and_none_match_should_return_error() {
+        // Exclude z
+        let lowercase_parsers = ('a'..='y').map(char_parser).collect::<Vec<_>>();
+        let any_lowercase = choice(&lowercase_parsers);
+
+        let input = &format!("zrandom");
+        let (result, rest) = any_lowercase(input);
+
+        assert!(result.is_err());
+        assert_eq!(rest, "zrandom");
     }
 }
