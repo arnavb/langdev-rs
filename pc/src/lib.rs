@@ -39,7 +39,7 @@ pub fn char_parser(to_match: char) -> impl Parser<char> {
 
 /// Combine two parsers in succession, and return a tuple of their combined results. If either
 /// parser fails, then the corresponding input is not consumed and the error is returned.
-pub fn and_then<T, U>(parser1: &impl Parser<T>, parser2: &impl Parser<U>) -> impl Parser<(T, U)> {
+pub fn and_then<T, U>(parser1: impl Parser<T>, parser2: impl Parser<U>) -> impl Parser<(T, U)> {
     move |input| {
         let (result1, remaining1) = parser1(input);
 
@@ -62,7 +62,7 @@ pub fn and_then<T, U>(parser1: &impl Parser<T>, parser2: &impl Parser<U>) -> imp
 /// Run either of two parsers of the same type. If the first succeeds, return its result.
 /// Otherwise return the result of the second parser. If any parser fails, input should not be
 /// consumed with respect to that parser.
-pub fn or_else<T>(parser1: &impl Parser<T>, parser2: &impl Parser<T>) -> impl Parser<T> {
+pub fn or_else<T>(parser1: impl Parser<T>, parser2: impl Parser<T>) -> impl Parser<T> {
     move |input| {
         let (result1, remaining1) = parser1(input);
 
