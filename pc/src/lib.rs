@@ -306,4 +306,31 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(rest, "zrandom");
     }
+
+    #[test]
+    fn if_given_heterogenous_parsers_with_same_return_should_be_able_to_choice_over_them() {
+        // Exclude z
+        let lowercase_parsers = ('a'..='y').map(char_parser).collect::<Vec<_>>();
+
+        // It's not really possible to represent this as a closure directly, because of
+        // the lack of higher ranked trait bounds in order to represent that the returned
+        // string slice must live as long as the input. We can write a function to
+        // constrain, e.g like https://stackoverflow.com/a/46198877/6525260
+        let other_parser: fn(&str) -> (Result<char, ParseError>, &str) = |input| (Ok('z'), input);
+
+        let mut combined_list = lowercase_parsers
+            .iter()
+            .map(|p| p as &dyn Parser<char>)
+            .collect::<Vec<_>>();
+
+        combined_list.push(&other_parser);
+
+        // This should parse any character outside a..=y as z
+        let combined_parser = choice(&combined_list);
+
+        let (token, rest) = combined_parser("$");
+
+        assert!(matches!(token, Ok('z')));
+        assert_eq!(rest, "$");
+    }
 }
