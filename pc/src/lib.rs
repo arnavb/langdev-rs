@@ -117,6 +117,15 @@ pub fn choice<T>(parsers: &[impl Parser<T>]) -> impl Parser<T> {
     }
 }
 
+/// Apply a mapping function from A -> B for a successful parser, otherwise propagate the parsing
+/// error
+pub fn map<A, B>(parser: impl Parser<A>, func: impl Fn(A) -> B) -> impl Parser<B> {
+    move |input| match parser(input) {
+        (Ok(token), rest) => (Ok(func(token)), rest),
+        (Err(err), rest) => (Err(err), rest),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +341,33 @@ mod tests {
 
         assert!(matches!(token, Ok('z')));
         assert_eq!(rest, "$");
+    }
+
+    #[test]
+    fn map_parser_converts_parsers() {
+        let digit_char_parsers_vec = ('0'..='9').map(char_parser).collect::<Vec<_>>();
+        let digit_char_parser = choice(&digit_char_parsers_vec);
+
+        // unwrap is safe here since the digit should've been filtered by the parser
+        let digit_parser = map(digit_char_parser, |ch| ch.to_digit(10).unwrap());
+
+        let (token, rest) = digit_parser("1ab");
+
+        assert!(matches!(token, Ok(1)));
+        assert_eq!(rest, "ab");
+    }
+
+    #[test]
+    fn map_parser_returns_an_error_if_parser_failed() {
+        let digit_char_parsers_vec = ('0'..='9').map(char_parser).collect::<Vec<_>>();
+        let digit_char_parser = choice(&digit_char_parsers_vec);
+
+        // unwrap is safe here since the digit should've been filtered by the parser
+        let digit_parser = map(digit_char_parser, |ch| ch.to_digit(10).unwrap());
+
+        let (token, rest) = digit_parser("ab");
+
+        assert!(token.is_err());
+        assert_eq!(rest, "ab");
     }
 }
