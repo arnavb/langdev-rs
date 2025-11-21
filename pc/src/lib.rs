@@ -126,6 +126,35 @@ pub fn map<A, B>(parser: impl Parser<A>, func: impl Fn(A) -> B) -> impl Parser<B
     }
 }
 
+/// Takes a normal value, and lifts (wraps) it into a parser (not consuming input)
+/// Can't move T into an Fn, so just as a hack will copy for now
+pub fn lift<T: Copy>(value: T) -> impl Parser<T> {
+    move |input| (Ok(value), input)
+}
+
+/// map, but at the parser level. Takes a parser that produces a function, and a parser that
+/// produces a value of the first argument type, and applies said function and wraps that value
+pub fn apply<A, B>(
+    func_parser: impl Parser<fn(A) -> B>, // Can be function pointer since no captures /
+    // lifetimes
+    value_parser: impl Parser<A>,
+) -> impl Parser<B> {
+    move |input| {
+        let func_and_value_parser = and_then(&func_parser, &value_parser);
+
+        map(func_and_value_parser, |(func, value)| func(value))(input)
+    }
+}
+
+// Lift two parameter functions
+pub fn lift2<A, B, C>(
+    func: fn(A, B) -> C, // Can be function pointer since no captures / lifetimes
+    parser1: impl Parser<A>,
+    parser2: impl Parser<B>,
+) -> impl Parser<C> {
+    move |input| unimplemented!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,4 +399,19 @@ mod tests {
         assert!(token.is_err());
         assert_eq!(rest, "ab");
     }
+
+    #[test]
+    fn lift_can_lift_values_into_parsers() {
+        let value = 35;
+
+        let lifted_value = lift(value);
+
+        let (token, rest) = lifted_value("abc");
+
+        assert!(matches!(token, Ok(35)));
+        assert_eq!(rest, "abc");
+    }
+
+    #[test]
+    fn apply_allows_lifting_of_two_param_function() {}
 }
