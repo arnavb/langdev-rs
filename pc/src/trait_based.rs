@@ -276,4 +276,61 @@ mod tests {
         ));
         assert_eq!(rest, "aput");
     }
+
+    #[test]
+    fn test_combining_or_else_and_then() {
+        let in_or_ou = or_else(
+            and_then(character('i'), character('n')),
+            and_then(character('o'), character('u')),
+        );
+
+        let (parsed, rest) = run_parser(&in_or_ou, "input").unwrap();
+        assert_eq!(parsed, ('i', 'n'));
+        assert_eq!(rest, "put");
+
+        let (parsed, rest) = run_parser(&in_or_ou, "output").unwrap();
+        assert_eq!(parsed, ('o', 'u'));
+        assert_eq!(rest, "tput");
+
+        let (error, rest) = run_parser(&in_or_ou, "random").unwrap_err();
+
+        assert!(matches!(
+            error,
+            ParseError::ExpectedSpecificGotSpecific('o', 'r')
+        ));
+        assert_eq!(rest, "random");
+    }
+
+    #[test]
+    fn test_chaining_or_else() {
+        let digit_parser = character('0')
+            .or_else(character('1'))
+            .or_else(character('2'))
+            .or_else(character('3'))
+            .or_else(character('4'))
+            .or_else(character('5'))
+            .or_else(character('5'))
+            .or_else(character('7'))
+            .or_else(character('8'))
+            .or_else(character('9'));
+
+        let (parsed, rest) = run_parser(&digit_parser, "943").unwrap();
+
+        assert_eq!(parsed, '9');
+        assert_eq!(rest, "43");
+    }
+
+    #[test]
+    fn test_chaining_and_then() {
+        let digit_parser = character('0')
+            .and_then(character('1'))
+            .and_then(character('2'))
+            .and_then(character('3'))
+            .and_then(character('4'));
+
+        let (parsed, rest) = run_parser(&digit_parser, "01234").unwrap();
+
+        assert_eq!(parsed, (((('0', '1'), '2'), '3'), '4'));
+        assert_eq!(rest, "");
+    }
 }
