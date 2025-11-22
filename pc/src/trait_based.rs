@@ -23,6 +23,17 @@ pub trait Parser {
             parser_b: other,
         }
     }
+
+    fn and_then<U>(self, other: U) -> AndThen<Self, U>
+    where
+        Self: Sized,
+        U: Parser,
+    {
+        AndThen {
+            parser_a: self,
+            parser_b: other,
+        }
+    }
 }
 
 /// Blanket implementation for all parser references
@@ -117,6 +128,27 @@ where
     }
 }
 
+pub struct AndThen<A, B> {
+    parser_a: A,
+    parser_b: B,
+}
+
+impl<A, B> Parser for AndThen<A, B>
+where
+    A: Parser,
+    B: Parser,
+{
+    type Output = (A::Output, B::Output);
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        self.parser_a.parse(input).and_then(|(token, rest)| {
+            let (token2, rest2) = self.parser_b.parse(rest)?;
+
+            Ok(((token, token2), rest2))
+        })
+    }
+}
+
 /// Functional interface to the above structs/traits
 
 /// Evaluates a parser
@@ -146,6 +178,16 @@ where
     B: Parser<Output = A::Output>,
 {
     OrElse { parser_a, parser_b }
+}
+
+/// Combine the results of two parsers run in sequence. If one errors, its error is returned
+/// instead
+pub fn and_then<A, B>(parser_a: A, parser_b: B) -> AndThen<A, B>
+where
+    A: Parser,
+    B: Parser,
+{
+    AndThen { parser_a, parser_b }
 }
 
 #[cfg(test)]
@@ -210,5 +252,28 @@ mod tests {
             ParseError::ExpectedSpecificGotSpecific('a', 'b')
         ));
         assert_eq!(rest, "bnput");
+    }
+
+    #[test]
+    fn test_and_then() {
+        let parser = and_then(character('i'), character('n'));
+
+        let (parsed, rest) = run_parser(&parser, "input").unwrap();
+        assert_eq!(parsed, ('i', 'n'));
+        assert_eq!(rest, "put");
+
+        let (error, rest) = run_parser(&parser, "anput").unwrap_err();
+        assert!(matches!(
+            error,
+            ParseError::ExpectedSpecificGotSpecific('i', 'a')
+        ));
+        assert_eq!(rest, "anput");
+
+        let (error, rest) = run_parser(&parser, "iaput").unwrap_err();
+        assert!(matches!(
+            error,
+            ParseError::ExpectedSpecificGotSpecific('n', 'a')
+        ));
+        assert_eq!(rest, "aput");
     }
 }
