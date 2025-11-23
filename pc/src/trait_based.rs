@@ -64,6 +64,9 @@ pub enum ParseError {
 
     /// Expected a general concept (e.g an identifier), but got end of input
     ExpectedConceptGotEof(String),
+
+    /// Expected a general concept (e.g an identifier), but got something specific
+    ExpectedConceptGotSpecific(String, char),
 }
 
 pub struct Any;
@@ -92,6 +95,29 @@ impl Parser for Character {
             Some(ch) if ch == self.0 => Ok((ch, &input[ch.len_utf8()..])),
             Some(ch) => Err((ParseError::ExpectedSpecificGotSpecific(self.0, ch), input)),
             None => Err((ParseError::ExpectedSpecificGotEof(self.0), input)),
+        }
+    }
+}
+
+pub struct Symbol(String);
+
+impl Parser for Symbol {
+    type Output = String;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        if input.starts_with(&self.0) {
+            Ok((self.0.clone(), &input[self.0.len()..]))
+        } else {
+            Err(match input.chars().next() {
+                Some(ch) => (
+                    ParseError::ExpectedConceptGotSpecific(format!("symbol {}", self.0), ch),
+                    input,
+                ),
+                None => (
+                    ParseError::ExpectedConceptGotEof(format!("symbol {}", self.0)),
+                    input,
+                ),
+            })
         }
     }
 }
@@ -188,6 +214,11 @@ where
     B: Parser,
 {
     AndThen { parser_a, parser_b }
+}
+
+/// Parse a symbol, e.g a specific sequence of characters
+pub fn symbol(string: &str) -> Symbol {
+    Symbol(string.to_owned())
 }
 
 #[cfg(test)]
@@ -331,6 +362,26 @@ mod tests {
         let (parsed, rest) = run_parser(&digit_parser, "01234").unwrap();
 
         assert_eq!(parsed, (((('0', '1'), '2'), '3'), '4'));
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn test_symbol() {
+        let keyword_parser = symbol("if");
+
+        let (parsed, rest) = run_parser(&keyword_parser, "if (a == b) {}").unwrap();
+
+        assert_eq!(parsed, "if");
+        assert_eq!(rest, " (a == b) {}");
+
+        let (error, rest) = run_parser(&keyword_parser, "(a == b) {}").unwrap_err();
+
+        assert!(matches!(error, ParseError::ExpectedConceptGotSpecific(..)));
+        assert_eq!(rest, "(a == b) {}");
+
+        let (error, rest) = run_parser(&keyword_parser, "").unwrap_err();
+
+        assert!(matches!(error, ParseError::ExpectedConceptGotEof(..)));
         assert_eq!(rest, "");
     }
 }
