@@ -157,6 +157,22 @@ impl<P: Parser> Parser for Until<P> {
     }
 }
 
+pub struct Map<P, F>(P, F);
+
+impl<P, F, A, B> Parser for Map<P, F>
+where
+    P: Parser<Output = A>,
+    F: Fn(A) -> B,
+{
+    type Output = B;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        self.0
+            .parse(input)
+            .map(|(parsed, rest)| ((self.1)(parsed), rest))
+    }
+}
+
 pub struct Eof;
 
 impl Parser for Eof {
@@ -260,6 +276,15 @@ pub fn symbol(string: &str) -> Symbol {
 /// all the input prior to that consumed input. If the parser never succeeds, returns an error.
 pub fn until<P: Parser>(parser: P) -> Until<P> {
     Until(parser)
+}
+
+/// Map's the successful result of a parser to a passed function
+pub fn map<A, B, P, F>(parser: P, func: F) -> Map<P, F>
+where
+    P: Parser<Output = A>,
+    F: Fn(A) -> B,
+{
+    Map(parser, func)
 }
 
 #[cfg(test)]
@@ -440,5 +465,28 @@ mod tests {
 
         assert!(matches!(error, ParseError::UnexpectedEof));
         assert_eq!(rest, "a string");
+    }
+
+    #[test]
+    fn test_map() {
+        let digit_char_parser = character('0')
+            .or_else(character('1'))
+            .or_else(character('2'))
+            .or_else(character('3'))
+            .or_else(character('4'));
+
+        let digit_parser = map(&digit_char_parser, |ch| {
+            ch.to_digit(10).expect("ideally not possible")
+        });
+
+        let (parsed, rest) = run_parser(&digit_parser, "4").unwrap();
+
+        assert_eq!(parsed, 4);
+        assert_eq!(rest, "");
+
+        let (error, rest) = run_parser(&digit_parser, "a").unwrap_err();
+
+        assert!(matches!(error, ParseError::ExpectedSpecificGotSpecific(..)));
+        assert_eq!(rest, "a");
     }
 }
