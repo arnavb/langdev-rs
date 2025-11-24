@@ -67,6 +67,9 @@ pub enum ParseError {
 
     /// Expected a general concept (e.g an identifier), but got something specific
     ExpectedConceptGotSpecific(String, char),
+
+    /// Unexpected EOF
+    UnexpectedEof,
 }
 
 pub struct Any;
@@ -118,6 +121,38 @@ impl Parser for Symbol {
                     input,
                 ),
             })
+        }
+    }
+}
+
+pub struct Until<P: Parser>(P);
+
+impl<P: Parser> Parser for Until<P> {
+    type Output = String;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        let mut result = "".to_owned();
+        let mut ended_at = None;
+
+        for (i, ch) in input.char_indices() {
+            let current_string = &input[i..];
+
+            match self.0.parse(current_string) {
+                Ok(_) => {
+                    // Since the current string parsed successfully, we do NOT consume this
+                    // character onward and end here
+                    ended_at = Some(i);
+                    break;
+                }
+                Err(_) => {
+                    result.push(ch);
+                }
+            }
+        }
+
+        match ended_at {
+            Some(pos) => Ok((result, &input[pos..])),
+            None => Err((ParseError::UnexpectedEof, input)),
         }
     }
 }
@@ -219,6 +254,12 @@ where
 /// Parse a symbol, e.g a specific sequence of characters
 pub fn symbol(string: &str) -> Symbol {
     Symbol(string.to_owned())
+}
+
+/// Consumes input until the passed parser successfully returns a result. Upon doing so, returns
+/// all the input prior to that consumed input. If the parser never succeeds, returns an error.
+pub fn until<P: Parser>(parser: P) -> Until<P> {
+    Until(parser)
 }
 
 #[cfg(test)]
@@ -383,5 +424,21 @@ mod tests {
 
         assert!(matches!(error, ParseError::ExpectedConceptGotEof(..)));
         assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn test_until() {
+        let quote = character('"');
+        let string_parser = and_then(and_then(&quote, until(&quote)), &quote);
+
+        let (parsed, rest) = run_parser(&string_parser, "\"a string\" everything else").unwrap();
+
+        assert_eq!(parsed, (('"', "a string".to_string()), '"'));
+        assert_eq!(rest, " everything else");
+
+        let (error, rest) = run_parser(&string_parser, "\"a string").unwrap_err();
+
+        assert!(matches!(error, ParseError::UnexpectedEof));
+        assert_eq!(rest, "a string");
     }
 }
