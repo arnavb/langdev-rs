@@ -226,11 +226,11 @@ where
     A: Parser,
     B: Parser,
 {
-    fn left(self) -> Left<Self> {
+    pub fn left(self) -> Left<Self> {
         Left(self)
     }
 
-    fn right(self) -> Right<Self> {
+    pub fn right(self) -> Right<Self> {
         Right(self)
     }
 }
