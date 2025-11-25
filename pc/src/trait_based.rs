@@ -18,10 +18,7 @@ pub trait Parser {
         Self: Sized,
         T: Parser<Output = Self::Output>,
     {
-        OrElse {
-            parser_a: self,
-            parser_b: other,
-        }
+        OrElse(self, other)
     }
 
     fn and_then<U>(self, other: U) -> AndThen<Self, U>
@@ -29,10 +26,7 @@ pub trait Parser {
         Self: Sized,
         U: Parser,
     {
-        AndThen {
-            parser_a: self,
-            parser_b: other,
-        }
+        AndThen(self, other)
     }
 
     fn map<A, B, F>(self, func: F) -> Map<Self, F>
@@ -197,10 +191,7 @@ impl Parser for Eof {
     }
 }
 
-pub struct OrElse<A, B> {
-    parser_a: A,
-    parser_b: B,
-}
+pub struct OrElse<A, B>(A, B);
 
 impl<A, B> Parser for OrElse<A, B>
 where
@@ -210,16 +201,11 @@ where
     type Output = A::Output;
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
-        self.parser_a
-            .parse(input)
-            .or_else(|_| self.parser_b.parse(input))
+        self.0.parse(input).or_else(|_| self.1.parse(input))
     }
 }
 
-pub struct AndThen<A, B> {
-    parser_a: A,
-    parser_b: B,
-}
+pub struct AndThen<A, B>(A, B);
 
 impl<A, B> AndThen<A, B>
 where
@@ -243,8 +229,8 @@ where
     type Output = (A::Output, B::Output);
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
-        self.parser_a.parse(input).and_then(|(token, rest)| {
-            let (token2, rest2) = self.parser_b.parse(rest)?;
+        self.0.parse(input).and_then(|(token, rest)| {
+            let (token2, rest2) = self.1.parse(rest)?;
 
             Ok(((token, token2), rest2))
         })
@@ -368,7 +354,7 @@ where
     A: Parser,
     B: Parser<Output = A::Output>,
 {
-    OrElse { parser_a, parser_b }
+    OrElse(parser_a, parser_b)
 }
 
 /// Combine the results of two parsers run in sequence. If one errors, its error is returned
@@ -378,7 +364,7 @@ where
     A: Parser,
     B: Parser,
 {
-    AndThen { parser_a, parser_b }
+    AndThen(parser_a, parser_b)
 }
 
 /// Parse a symbol, e.g a specific sequence of characters
