@@ -34,6 +34,14 @@ pub trait Parser {
             parser_b: other,
         }
     }
+
+    fn map<A, B, F>(self, func: F) -> Map<Self, F>
+    where
+        Self: Sized,
+        F: Fn(A) -> B,
+    {
+        Map(self, func)
+    }
 }
 
 /// Blanket implementation for all parser references
@@ -70,6 +78,9 @@ pub enum ParseError {
 
     /// Unexpected EOF
     UnexpectedEof,
+
+    /// Unsatisfied Predicate
+    UnsatisfiedPredicate,
 }
 
 pub struct Any;
@@ -210,6 +221,20 @@ pub struct AndThen<A, B> {
     parser_b: B,
 }
 
+impl<A, B> AndThen<A, B>
+where
+    A: Parser,
+    B: Parser,
+{
+    fn left(self) -> Left<Self> {
+        Left(self)
+    }
+
+    fn right(self) -> Right<Self> {
+        Right(self)
+    }
+}
+
 impl<A, B> Parser for AndThen<A, B>
 where
     A: Parser,
@@ -223,6 +248,95 @@ where
 
             Ok(((token, token2), rest2))
         })
+    }
+}
+
+pub struct Predicate<F>(F);
+
+impl<F> Parser for Predicate<F>
+where
+    F: Fn(char) -> bool,
+{
+    type Output = char;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        match any().parse(input)? {
+            (parsed, rest) if (self.0)(parsed) => Ok((parsed, rest)),
+            _ => Err((ParseError::UnsatisfiedPredicate, input)),
+        }
+    }
+}
+
+pub struct ZeroOrMore<P>(P);
+
+impl<P> Parser for ZeroOrMore<P>
+where
+    P: Parser,
+{
+    type Output = Vec<P::Output>;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        let mut result = vec![];
+
+        let mut rest = input;
+
+        while let Ok((parsed, new_rest)) = self.0.parse(rest) {
+            result.push(parsed);
+            rest = new_rest;
+        }
+
+        Ok((result, rest))
+    }
+}
+
+pub struct OneOrMore<P>(P);
+
+impl<P> Parser for OneOrMore<P>
+where
+    P: Parser,
+{
+    type Output = Vec<P::Output>;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        let (parsed, rest) = self.0.parse(input)?;
+
+        let mut parsed_vec = vec![parsed];
+
+        let (mut others_parsed, rest) = zero_or_more(&self.0).parse(rest)?;
+
+        parsed_vec.append(&mut others_parsed);
+
+        Ok((parsed_vec, rest))
+    }
+}
+
+pub struct Left<P>(P);
+
+impl<P, L, R> Parser for Left<P>
+where
+    P: Parser<Output = (L, R)>,
+{
+    type Output = L;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        let ((left, _), rest) = self.0.parse(input)?;
+
+        Ok((left, rest))
+    }
+}
+
+pub struct Right<P>(P);
+
+impl<P, L, R> Parser for Right<P>
+where
+    P: Parser<Output = (L, R)>,
+{
+    type Output = R;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        let ((_, right), rest) = self.0.parse(input)?;
+
+        Ok((right, rest))
     }
 }
 
@@ -285,6 +399,42 @@ where
     F: Fn(A) -> B,
 {
     Map(parser, func)
+}
+
+/// Consume next character if it matches a predicate
+pub fn predicate<F>(func: F) -> Predicate<F>
+where
+    F: Fn(char) -> bool,
+{
+    Predicate(func)
+}
+
+/// Parse 0 or more of a parser
+pub fn zero_or_more<P: Parser>(parser: P) -> ZeroOrMore<P> {
+    ZeroOrMore(parser)
+}
+
+/// Parse 1 or more of a parser
+pub fn one_or_more<P: Parser>(parser: P) -> OneOrMore<P> {
+    OneOrMore(parser)
+}
+
+// Discards the right element of a parser that returns a pair. Most useful with the result of
+// and_then
+pub fn left<P, L, R>(parser: P) -> Left<P>
+where
+    P: Parser<Output = (L, R)>,
+{
+    Left(parser)
+}
+
+// Discards the left element of a parser that returns a pair. Most useful with the result of
+// and_then
+pub fn right<P, L, R>(parser: P) -> Right<P>
+where
+    P: Parser<Output = (L, R)>,
+{
+    Right(parser)
 }
 
 #[cfg(test)]
@@ -488,5 +638,90 @@ mod tests {
 
         assert!(matches!(error, ParseError::ExpectedSpecificGotSpecific(..)));
         assert_eq!(rest, "a");
+    }
+
+    #[test]
+    fn test_predicate() {
+        let until_dollar_parser = until(predicate(|ch| ch == '$'));
+
+        let (parsed, rest) = run_parser(until_dollar_parser, "input$rest").unwrap();
+
+        assert_eq!(parsed, "input");
+        assert_eq!(rest, "$rest");
+    }
+
+    #[test]
+    fn test_left() {
+        let word_then_colon = until(predicate(|ch| ch == ':'))
+            .and_then(character(':'))
+            .left();
+
+        let (parsed, rest) = run_parser(word_then_colon, "input:").unwrap();
+
+        assert_eq!(parsed, "input");
+
+        // Right is discarded
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn test_right() {
+        let word_then_colon = until(predicate(|ch| ch == ':'))
+            .and_then(character(':'))
+            .right();
+
+        let (parsed, rest) = run_parser(word_then_colon, "input:").unwrap();
+
+        assert_eq!(parsed, ':');
+
+        // Left is discarded
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn test_zero_or_more() {
+        let binary_parser =
+            zero_or_more(character('0').or_else(character('1'))).map(|digits: Vec<char>| {
+                digits
+                    .iter()
+                    .map(|d| d.to_digit(10).expect("impossible"))
+                    .fold(0, |acc, d| (acc << 1) + d)
+            });
+
+        let (parsed, rest) = run_parser(&binary_parser, "1110").unwrap();
+
+        assert_eq!(parsed, 14);
+        assert_eq!(rest, "");
+
+        let (parsed, rest) = run_parser(&binary_parser, "").unwrap();
+
+        assert_eq!(parsed, 0);
+        assert_eq!(rest, "");
+
+        // Should ignore everything after the 1
+        let (parsed, rest) = run_parser(&binary_parser, "102").unwrap();
+
+        assert_eq!(parsed, 2);
+        assert_eq!(rest, "2");
+    }
+
+    #[test]
+    fn test_one_or_more() {
+        let slashes_parser = one_or_more(character('/'));
+
+        let (parsed, rest) = run_parser(&slashes_parser, "//").unwrap();
+
+        assert_eq!(parsed, vec!['/', '/']);
+        assert_eq!(rest, "");
+
+        let (parsed, rest) = run_parser(&slashes_parser, "/a").unwrap();
+
+        assert_eq!(parsed, vec!['/']);
+        assert_eq!(rest, "a");
+
+        let (error, rest) = run_parser(&slashes_parser, "").unwrap_err();
+
+        assert!(matches!(error, ParseError::ExpectedSpecificGotEof(..)));
+        assert_eq!(rest, "");
     }
 }
