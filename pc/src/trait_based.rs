@@ -326,6 +326,22 @@ where
     }
 }
 
+pub struct Optional<P>(P);
+
+impl<P> Parser for Optional<P>
+where
+    P: Parser,
+{
+    type Output = Option<P::Output>;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        match self.0.parse(input) {
+            Ok((parsed, rest)) => Ok((Some(parsed), rest)),
+            Err(_) => Ok((None, input)),
+        }
+    }
+}
+
 /// Functional interface to the above structs/traits
 
 /// Evaluates a parser
@@ -421,6 +437,12 @@ where
     P: Parser<Output = (L, R)>,
 {
     Right(parser)
+}
+
+/// Tries to apply a parser and wrap its result in an option, discarding the error and replacing
+/// it with None.
+pub fn optional<P: Parser>(parser: P) -> Optional<P> {
+    Optional(parser)
 }
 
 #[cfg(test)]
@@ -709,5 +731,24 @@ mod tests {
 
         assert!(matches!(error, ParseError::ExpectedSpecificGotEof(..)));
         assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn test_optional() {
+        let optional_whitespace_parser = optional(
+            character('\n')
+                .or_else(character('\t'))
+                .or_else(character(' ')),
+        );
+
+        let (parsed, rest) = run_parser(optional_whitespace_parser, "input").unwrap();
+
+        assert_eq!(parsed, None);
+        assert_eq!(rest, "input");
+
+        let (parsed, rest) = run_parser(optional_whitespace_parser, "input").unwrap();
+
+        assert_eq!(parsed, None);
+        assert_eq!(rest, "input");
     }
 }
