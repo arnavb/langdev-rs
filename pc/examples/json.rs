@@ -1,6 +1,6 @@
 /// Build a representation of a JSON document that can parse a document into an abstract syntax
 /// tree and then recreate the source exactly.
-use pc::trait_based::{character, Parser};
+use pc::trait_based::{character, optional, zero_or_more, Parser};
 
 struct Json(Element);
 
@@ -100,6 +100,12 @@ impl TryFrom<char> for Sign {
     }
 }
 
+fn sign() -> impl Parser<Output = Sign> {
+    character('+')
+        .or_else(character('-'))
+        .map(|ch| Sign::try_from(ch).unwrap())
+}
+
 enum Whitespace {
     Space,
     LineFeed,
@@ -119,6 +125,16 @@ impl TryFrom<char> for Whitespace {
             _ => Err(()),
         }
     }
+}
+
+fn whitespace() -> impl Parser<Output = Vec<Whitespace>> {
+    zero_or_more(
+        character('\u{0020}')
+            .or_else(character('\u{000A}'))
+            .or_else(character('\u{000D}'))
+            .or_else(character('\u{0009}'))
+            .map(|ch| Whitespace::try_from(ch).unwrap()),
+    )
 }
 
 fn main() {
