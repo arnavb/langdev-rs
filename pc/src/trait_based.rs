@@ -741,12 +741,12 @@ mod tests {
                 .or_else(character(' ')),
         );
 
-        let (parsed, rest) = run_parser(optional_whitespace_parser, "input").unwrap();
+        let (parsed, rest) = run_parser(&optional_whitespace_parser, "input").unwrap();
 
         assert_eq!(parsed, None);
         assert_eq!(rest, "input");
 
-        let (parsed, rest) = run_parser(optional_whitespace_parser, "input").unwrap();
+        let (parsed, rest) = run_parser(&optional_whitespace_parser, "input").unwrap();
 
         assert_eq!(parsed, None);
         assert_eq!(rest, "input");
