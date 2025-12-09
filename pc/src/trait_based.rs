@@ -49,6 +49,14 @@ impl<P: Parser> Parser for &P {
     }
 }
 
+impl<P: Parser + ?Sized> Parser for Box<P> {
+    type Output = P::Output;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        (**self).parse(input)
+    }
+}
+
 /// Is either the parsed Output type along with remaining input, or an error with the unconsumed
 /// input. Even though the input is present on both sides, modeling it in this way allows for
 /// easier chaining using Result methods.
