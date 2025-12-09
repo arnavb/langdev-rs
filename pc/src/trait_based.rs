@@ -344,6 +344,20 @@ where
     }
 }
 
+pub struct Lazy<F>(F);
+
+impl<F, P> Parser for Lazy<F>
+where
+    P: Parser,
+    F: Fn() -> P,
+{
+    type Output = P::Output;
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Output> {
+        (self.0)().parse(input)
+    }
+}
+
 /// Functional interface to the above structs/traits
 
 /// Evaluates a parser
@@ -445,6 +459,15 @@ where
 /// it with None.
 pub fn optional<P: Parser>(parser: P) -> Optional<P> {
     Optional(parser)
+}
+
+/// Evaluates a parser on-demand based on a closure, to prevent infinite recursion issues
+pub fn lazy<F, P>(func: F) -> Lazy<F>
+where
+    P: Parser,
+    F: Fn() -> P,
+{
+    Lazy(func)
 }
 
 #[cfg(test)]
@@ -752,5 +775,29 @@ mod tests {
 
         assert_eq!(parsed, None);
         assert_eq!(rest, "input");
+    }
+
+    #[test]
+    fn test_lazy() {
+        fn recursive() -> Box<dyn Parser<Output = String>> {
+            Box::new(character('i').and_then(lazy(|| optional(recursive()))).map(
+                |(l, r): (char, Option<String>)| format!("{}{}", l, r.unwrap_or(String::new())),
+            ))
+        }
+
+        let (parsed, rest) = run_parser(recursive(), "i").unwrap();
+
+        assert_eq!(parsed, "i");
+        assert_eq!(rest, "");
+
+        let (parsed, rest) = run_parser(recursive(), "iiii").unwrap();
+
+        assert_eq!(parsed, "iiii");
+        assert_eq!(rest, "");
+
+        let (error, rest) = run_parser(recursive(), "").unwrap_err();
+
+        assert!(matches!(error, ParseError::ExpectedSpecificGotEof(..)));
+        assert_eq!(rest, "");
     }
 }
