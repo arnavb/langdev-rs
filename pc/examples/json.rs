@@ -146,7 +146,11 @@ enum JCharacter {
 fn j_character() -> impl Parser<Output = JCharacter> {
     predicate(|ch| ch != '"' && ch != '\\')
         .map(|ch| JCharacter::Value(ch))
-        .or_else(escape().map(|e| JCharacter::Escape(e)))
+        .or_else(
+            character('\\')
+                .and_then(escape().map(|e| JCharacter::Escape(e)))
+                .right(),
+        )
 }
 
 enum Escape {
