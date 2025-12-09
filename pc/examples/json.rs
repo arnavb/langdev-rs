@@ -1,13 +1,17 @@
-use std::{process::Output, ptr::null};
-
 /// Build a representation of a JSON document that can parse a document into an abstract syntax
 /// tree and then recreate the source exactly.
 use pc::trait_based::{
-    any, character, one_or_more, optional, predicate, symbol, zero_or_more, Parser,
+    any, character, lazy, map, one_or_more, optional, predicate, run_parser, symbol, zero_or_more,
+    Parser,
 };
 
 struct Json(Element);
 
+fn json() -> impl Parser<Output = Element> {
+    element()
+}
+
+#[derive(Debug)]
 enum Value {
     Object(Object),
     Array(Array),
@@ -33,19 +37,21 @@ fn value() -> impl Parser<Output = Value> {
 
     let null_p = symbol("null").map(|_: String| Value::Null);
 
-    // Arrays / objects lead to type recursion, need to use heap allocation probably
-    string_p
+    object_p
+        .or_else(array_p)
+        .or_else(string_p)
         .or_else(number_p)
         .or_else(boolean_p)
         .or_else(null_p)
 }
 
+#[derive(Debug)]
 enum Object {
     EmptyObject(Vec<Whitespace>),
     WithMembers(Members),
 }
 
-fn object() -> impl Parser<Output = Object> {
+fn object() -> Box<dyn Parser<Output = Object>> {
     let whitespace_only = character('{')
         .and_then(whitespace())
         .right()
@@ -53,16 +59,19 @@ fn object() -> impl Parser<Output = Object> {
         .left()
         .map(|v| Object::EmptyObject(v));
 
-    let with_members = character('{')
-        .and_then(members())
-        .right()
-        .and_then(character('}'))
-        .left()
-        .map(|v| Object::WithMembers(v));
+    let with_members = lazy(|| {
+        character('{')
+            .and_then(members())
+            .right()
+            .and_then(character('}'))
+            .left()
+            .map(|v| Object::WithMembers(v))
+    });
 
-    whitespace_only.or_else(with_members)
+    Box::new(whitespace_only.or_else(with_members))
 }
 
+#[derive(Debug)]
 struct Members(Vec<Member>);
 
 fn members() -> impl Parser<Output = Members> {
@@ -70,7 +79,8 @@ fn members() -> impl Parser<Output = Members> {
     one_or_more(member().and_then(optional(character(','))).left()).map(|v| Members(v))
 }
 
-struct Member(Vec<Whitespace>, JString, Vec<Whitespace>, Element);
+#[derive(Debug)]
+struct Member(Vec<Whitespace>, JString, Vec<Whitespace>, Box<Element>);
 
 fn member() -> impl Parser<Output = Member> {
     whitespace()
@@ -79,15 +89,16 @@ fn member() -> impl Parser<Output = Member> {
         .and_then(character(':'))
         .left()
         .and_then(element())
-        .map(|(((w1, s), w2), e)| Member(w1, s, w2, e))
+        .map(|(((w1, s), w2), e)| Member(w1, s, w2, Box::new(e)))
 }
 
+#[derive(Debug)]
 enum Array {
     EmptyArray(Vec<Whitespace>),
     WithElements(Elements),
 }
 
-fn array() -> impl Parser<Output = Array> {
+fn array() -> Box<dyn Parser<Output = Array>> {
     let whitespace_only = character('[')
         .and_then(whitespace())
         .right()
@@ -95,16 +106,19 @@ fn array() -> impl Parser<Output = Array> {
         .left()
         .map(|v| Array::EmptyArray(v));
 
-    let with_elements = character('[')
-        .and_then(elements())
-        .right()
-        .and_then(character(']'))
-        .left()
-        .map(|v| Array::WithElements(v));
+    let with_elements = lazy(|| {
+        character('[')
+            .and_then(elements())
+            .right()
+            .and_then(character(']'))
+            .left()
+            .map(|v| Array::WithElements(v))
+    });
 
-    whitespace_only.or_else(with_elements)
+    Box::new(whitespace_only.or_else(with_elements))
 }
 
+#[derive(Debug)]
 struct Elements(Vec<Element>);
 
 fn elements() -> impl Parser<Output = Elements> {
@@ -112,6 +126,7 @@ fn elements() -> impl Parser<Output = Elements> {
     one_or_more(element().and_then(optional(character(','))).left()).map(|v| Elements(v))
 }
 
+#[derive(Debug)]
 struct Element(Vec<Whitespace>, Value, Vec<Whitespace>);
 
 fn element() -> impl Parser<Output = Element> {
@@ -121,6 +136,7 @@ fn element() -> impl Parser<Output = Element> {
         .map(|((w1, v), w2)| Element(w1, v, w2))
 }
 
+#[derive(Debug)]
 struct JString(JCharacters);
 
 fn j_string() -> impl Parser<Output = JString> {
@@ -132,12 +148,14 @@ fn j_string() -> impl Parser<Output = JString> {
         .map(|j_characters| JString(j_characters))
 }
 
+#[derive(Debug)]
 struct JCharacters(Vec<JCharacter>);
 
 fn j_characters() -> impl Parser<Output = JCharacters> {
     zero_or_more(j_character()).map(|v| JCharacters(v))
 }
 
+#[derive(Debug)]
 enum JCharacter {
     Value(char),
     Escape(Escape),
@@ -153,6 +171,7 @@ fn j_character() -> impl Parser<Output = JCharacter> {
         )
 }
 
+#[derive(Debug)]
 enum Escape {
     Quote,
     BackSlash,
@@ -189,6 +208,7 @@ fn escape() -> impl Parser<Output = Escape> {
     simple_chars_escape.or_else(hex_escape)
 }
 
+#[derive(Debug)]
 enum Hex {
     Digit(Digit),
     UppercaseAF(u8),
@@ -213,6 +233,7 @@ fn hex() -> impl Parser<Output = Hex> {
     positive_digit.or_else(uppercase_af).or_else(lowercase_af)
 }
 
+#[derive(Debug)]
 struct Number(Integer, Option<Fraction>, Option<Exponent>);
 
 fn number() -> impl Parser<Output = Number> {
@@ -222,6 +243,7 @@ fn number() -> impl Parser<Output = Number> {
         .map(|((integer, fraction), exponent)| Number(integer, fraction, exponent))
 }
 
+#[derive(Debug)]
 enum Integer {
     Digit(Digit),
     OneNineDigits(OneNine, Digits),
@@ -253,6 +275,7 @@ fn integer() -> impl Parser<Output = Integer> {
         .or_else(negative_digit)
 }
 
+#[derive(Debug)]
 struct Digits(Vec<Digit>);
 
 fn digits() -> impl Parser<Output = Digits> {
@@ -260,6 +283,7 @@ fn digits() -> impl Parser<Output = Digits> {
 }
 
 /// Distinct from Digit since some places cannot have a 0
+#[derive(Debug)]
 struct OneNine(u8);
 
 fn one_nine() -> impl Parser<Output = OneNine> {
@@ -268,12 +292,14 @@ fn one_nine() -> impl Parser<Output = OneNine> {
 }
 
 /// OneNine and 0
+#[derive(Debug)]
 struct Digit(u8);
 
 fn digit() -> impl Parser<Output = Digit> {
     predicate(|ch| ch.is_digit(10)).map(|ch: char| Digit(ch.to_digit(10).unwrap() as u8))
 }
 
+#[derive(Debug)]
 struct Fraction(Digits);
 
 fn fraction() -> impl Parser<Output = Fraction> {
@@ -283,6 +309,7 @@ fn fraction() -> impl Parser<Output = Fraction> {
         .map(|digits| Fraction(digits))
 }
 
+#[derive(Debug)]
 enum Exponent {
     Uppercase(Option<Sign>, Digits),
     Lowercase(Option<Sign>, Digits),
@@ -301,6 +328,7 @@ fn exponent() -> impl Parser<Output = Exponent> {
         })
 }
 
+#[derive(Debug)]
 enum Sign {
     Plus,
     Minus,
@@ -324,6 +352,7 @@ fn sign() -> impl Parser<Output = Sign> {
         .map(|ch| Sign::try_from(ch).unwrap())
 }
 
+#[derive(Debug)]
 enum Whitespace {
     Space,
     LineFeed,
@@ -356,5 +385,29 @@ fn whitespace() -> impl Parser<Output = Vec<Whitespace>> {
 }
 
 fn main() {
-    println!("Hello, World\n");
+    let example = r#"
+    {
+  "bookTitle": "The JSON Handbook",
+  "author": "Jane Doe",
+  "yearPublished": 2023,
+  "isAvailable": true,
+  "chapters": [
+    "Introduction to JSON",
+    "Data Types & Syntax",
+    "Working with Arrays",
+    "Real-World Examples"
+  ],
+  "publisher": {
+    "name": "Tech Publishers Inc.",
+    "location": "San Francisco"
+  },
+  "ISBN": null
+}
+    "#;
+
+    println!("{}", example);
+
+    let (parsed, rest) = run_parser(json(), example).unwrap();
+
+    println!("{:#?}", parsed);
 }
