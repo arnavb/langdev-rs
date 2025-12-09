@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 /// Model after Iterator as a design, similar to how map, fold, and all the various other
 /// iterator methods use intermediary structs to model their desired functionality.
 /// Design idea:
