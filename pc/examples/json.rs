@@ -247,10 +247,10 @@ fn integer() -> impl Parser<Output = Integer> {
         .and_then(digits())
         .map(|(one_nine, digits)| Integer::NegativeOneNineDigits(one_nine, digits));
 
-    positive_digit
-        .or_else(positive_one_nine_digits)
-        .or_else(negative_digit)
+    positive_one_nine_digits
         .or_else(negative_one_nine_digits)
+        .or_else(positive_digit)
+        .or_else(negative_digit)
 }
 
 struct Digits(Vec<Digit>);
