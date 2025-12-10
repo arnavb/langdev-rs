@@ -4,8 +4,11 @@ Notes/Code exploring writing a useful set of parser combinators in Rust.
 
 ## TODO:
 - [ ] Improve error messages
-- [ ] (maybe) Instead of using bare callbacks, switch to a trait based system,
+- [x] (maybe) Instead of using bare callbacks, switch to a trait based system,
       which should also allow easier composition of the combinators.
+
+## Examples
+* `json.rs` -> A very basic, untested, JSON AST parser. Seems to work well on small examples.
 
 ## Resources used:
 
