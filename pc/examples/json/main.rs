@@ -1,8 +1,10 @@
+use std::{env, fs, time::Instant};
+
 /// Build a representation of a JSON document that can parse a document into an abstract syntax
 /// tree and then recreate the source exactly.
 use pc::trait_based::{
     any, character, lazy, map, one_or_more, optional, predicate, run_parser, symbol, zero_or_more,
-    Parser,
+    ParseError, Parser,
 };
 
 struct Json(Element);
@@ -384,30 +386,47 @@ fn whitespace() -> impl Parser<Output = Vec<Whitespace>> {
     )
 }
 
-fn main() {
-    let example = r#"
-    {
-  "bookTitle": "The JSON Handbook",
-  "author": "Jane Doe",
-  "yearPublished": 2023,
-  "isAvailable": true,
-  "chapters": [
-    "Introduction to JSON",
-    "Data Types & Syntax",
-    "Working with Arrays",
-    "Real-World Examples"
-  ],
-  "publisher": {
-    "name": "Tech Publishers Inc.",
-    "location": "San Francisco"
-  },
-  "ISBN": null
-}
-    "#;
+fn main() -> Result<(), ParseError> {
+    let filename = env::args()
+        .nth(1)
+        .expect("Usage: cargo run --example json -- file.json");
 
-    println!("{}", example);
+    let contents = fs::read_to_string(&filename).expect("Unable to read file!");
 
-    let (parsed, rest) = run_parser(json(), example).unwrap();
+    let start_time = Instant::now();
 
-    println!("{:#?}", parsed);
+    let (parsed, rest) = run_parser(json(), &contents).map_err(|(err, _)| err)?;
+
+    let elapsed = start_time.elapsed();
+
+    // println!("{:#?}", parsed);
+
+    println!(
+        "Successfully Parsed {} of size {} in {}s",
+        filename,
+        contents.len(),
+        elapsed.as_secs_f64()
+    );
+
+    let Element(_, value, _) = parsed;
+
+    match value {
+        Value::Object(obj) => match obj {
+            Object::EmptyObject(_) => println!("Document is an empty object"),
+            Object::WithMembers(Members(members)) => {
+                println!("Document is an object of {} members", members.len())
+            }
+        },
+        Value::Array(arr) => match arr {
+            Array::EmptyArray(_) => println!("Document is an empty array"),
+            Array::WithElements(Elements(elems)) => {
+                println!("Document is an array of {} elements", elems.len())
+            }
+        },
+        _ => unreachable!("Parser should only resolve to an object or array"),
+    }
+
+    println!("{:#?}", rest);
+
+    Ok(())
 }
