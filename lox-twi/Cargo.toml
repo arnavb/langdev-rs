@@ -1,5 +1,5 @@
 [package]
-name = "tree-walk-interpreter"
+name = "lox-twi"
 version = "0.1.0"
 edition = "2021"
 
