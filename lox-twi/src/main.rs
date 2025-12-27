@@ -6,7 +6,9 @@ use std::{
 
 use scanner::Scanner;
 
+mod ast;
 mod errors;
+mod parser;
 mod scanner;
 mod token;
 
